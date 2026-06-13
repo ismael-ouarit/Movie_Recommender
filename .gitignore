@@ -1,0 +1,23 @@
+# Environment variables and secrets
+.env
+credentials.json
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# Python compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Mac OS folder attributes
+.DS_Store
+
+# IDE and Editor directories
+.vscode/
+.idea/
+.gemini/
