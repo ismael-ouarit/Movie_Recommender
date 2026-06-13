@@ -147,4 +147,4 @@ def recommendations():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=int(os.getenv("BACKEND_PORT", "5000")))

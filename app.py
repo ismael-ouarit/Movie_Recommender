@@ -7,7 +7,7 @@ from streamlit_searchbox import st_searchbox
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
-BACKEND_URL = "http://127.0.0.1:5000"
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:5000")
 
 def format_title(title):
     if not isinstance(title, str): return title
