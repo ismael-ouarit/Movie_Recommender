@@ -1,19 +1,34 @@
+import csv
 import os
 import re
 
 from flask import Flask, request, jsonify
-from elasticsearch import Elasticsearch
 import requests
 from recommender import get_recommendations, get_generic_recommendations
 
 app = Flask(__name__)
 
-# Connect to Elasticsearch (credentials supplied via environment variables)
-ES_URL = os.environ["ELASTICSEARCH_URL"]
-ES_API_KEY = os.environ["ELASTICSEARCH_API_KEY"]
-es = Elasticsearch(ES_URL, api_key=ES_API_KEY)
+# In-memory movie index for autocomplete, loaded once at startup from the
+# MovieLens "small" dataset. The dataset is small enough (~9.7k titles) that an
+# external search engine is unnecessary for title-prefix matching.
+MOVIES_CSV = os.path.join(os.path.dirname(__file__), "ml-small-movies.csv")
 
-INDEX_NAME = "movies"
+
+def _load_movie_index(csv_path=MOVIES_CSV):
+    movies = []
+    with open(csv_path, "r", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            movies.append({
+                "movieID": row["movieId"],
+                "title": row["title"],
+                "genres": row["genres"],
+                # Pre-lowercased title for fast case-insensitive matching.
+                "_title_lower": row["title"].lower(),
+            })
+    return movies
+
+
+MOVIE_INDEX = _load_movie_index()
 
 # TMDb API configuration
 TMDB_API_KEY = os.environ["TMDB_API_KEY"]
@@ -57,42 +72,27 @@ def get_tmdb_metadata(title):
 
 @app.route("/api/autocomplete", methods=["GET"])
 def autocomplete():
-    #Gets "query" parameter from URL
-    query = request.args.get("query", "")
-
-    #If user sends empty string, return nothing
+    """
+    Title autocomplete over the in-memory movie index.
+    Titles that start with the query rank above titles that merely contain it,
+    so "mat" surfaces "Matrix, The (1999)" ahead of incidental substring hits.
+    """
+    query = request.args.get("query", "").strip().lower()
     if not query:
         return jsonify([])
-    
-    #Searches through Elasticsearch "movies" index
-    response = es.search(
-        index = "movies",
-        body = {
-            "query": {
-                "multi_match": {
-                    "query": query,
-                    "type": "bool_prefix",
-                    "fields": [
-                        "title",
-                        "title._2gram",
-                        "title._3gram"
-                    ]
-                }
-            },
-            "size": 10
-        }
-    )
 
-    #Extracts the data from the response and builds a list
-    results = []
-    for hit in response["hits"]["hits"]:
-        results.append({
-            "movieID": hit["_source"]["movieID"],
-            "title": hit["_source"]["title"],
-            "genres": hit["_source"]["genres"]
-        })
+    prefix_hits, contains_hits = [], []
+    for movie in MOVIE_INDEX:
+        title = movie["_title_lower"]
+        if title.startswith(query):
+            prefix_hits.append(movie)
+        elif query in title:
+            contains_hits.append(movie)
 
-    #Returns the results as a JSON file
+    results = [
+        {"movieID": m["movieID"], "title": m["title"], "genres": m["genres"]}
+        for m in (prefix_hits + contains_hits)[:10]
+    ]
     return jsonify(results)
 
 
